@@ -18,7 +18,7 @@
 class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
 {
     /* checks if a currency is supported  */
-    function isValidCurrency($currency)
+    static function isValidCurrency($currency)
     {
         $currencies_str = 'NZD';
         $currencies = explode(',', $currencies_str);
@@ -30,7 +30,7 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
         return false;
     }
     
-    function getPaymentOptions()
+    static function getPaymentOptions()
     {
         /* ensure the order currency is the same as DPS currency */
         $currency = call_user_func(array(Jojo_Cart_Class, 'getCartCurrency'));
@@ -62,7 +62,7 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
     /*
     * Determines whether this payment plugin is active for the current payment.
     */
-    function isActive()
+    static function isActive()
     {
         /* they submitted the form from the checkout page */
         if (Jojo::getFormData('handler', false) == 'swipehq') return true;
@@ -84,7 +84,7 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
 
     }
 
-    function process()
+    static function process()
     {
         global $page;
         $languageurlprefix = $page->page['pageid'] ? Jojo::getPageUrlPrefix($page->page['pageid']) : $_SESSION['languageurlprefix'];
@@ -141,13 +141,22 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
 			$body .= "&merchant_id=" . Jojo::getOption('swipehq_merchantid', false);
 			$body .= "&transaction_id=" . htmlentities($_POST['transaction_id']);
 			$verify = self::post_to_url($url, $body);
-			$verify = json_decode($transactionid);
+			$verify = json_decode($verify);
 
 			if ($verify->response_code != 200 || $verify->data->transaction_approved != 'yes') {
 				$Success = false;
+			   $log             = new Jojo_Eventlog();
+				$log->code       = 'cart';
+				$log->importance = 'critical';
+				$log->shortdesc  = 'Transaction verification failed';
+				$log->desc       = 'Payment verfication error on ' . _SITEURI . '. Response:' . print_r($verify);
+				$log->savetodb();
+				unset($log);
+				exit;
 			}
 
-            /* build receipt */
+
+           /* build receipt */
             $receipt = array('Transaction Amount' => htmlentities($_POST['amount']),
                              'Transaction ID'          => htmlentities($_POST['transaction_id']),
                              'Card Name'          => htmlentities($_POST['name_on_card']),
@@ -155,7 +164,15 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
                              'Response'           => htmlentities($_POST['status'])
                              );
 
-            $message = ($Success) ? "Thank you for your payment via $CardName Credit Card.": '';
+            $message = ($Success) ? "Thank you for your payment.": '';
+
+ 			   $log             = new Jojo_Eventlog();
+				$log->code       = 'cart';
+				$log->importance = 'normal';
+				$log->shortdesc  = 'Transaction';
+				$log->desc       = 'Payment verfication on ' . _SITEURI . '. Verification:' .  print_r($verify) . '. Receipt:' . print_r($receipt);
+				$log->savetodb();
+				unset($log);
 
             return array(
                         'success' => $Success,
@@ -193,7 +210,7 @@ class jojo_plugin_jojo_cart_swipehq extends JOJO_Plugin
     }
 
 	public static function getToken(){
-		if (isset($_POST) && $_POST['td_user_data']) {
+		if (isset($_POST['td_user_data']) && $_POST['td_user_data']) {
 		 	return $_POST['td_user_data'];
 		}
 		
